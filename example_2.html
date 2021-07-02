@@ -27,7 +27,7 @@
 	
 	#messages {
 		padding : 10px 0px 0px 10px;
-		font-size : 20px;
+		font-size : 30px;
 	}	
 	
 	#messages > li{
@@ -39,6 +39,12 @@
 		height: 20vh; 
 		position: fixed;
 	}
+	
+	
+	#photo {
+		position: absolute;
+		left: 500px;
+	}
   </style>
 
   <body>
@@ -49,45 +55,104 @@
 		<div id="input-box">
 			<form action="" id="chat">
 				<select id="socketID" name="socketID">
-					
+
 				</select>
 				<input id="h" autocomplete="off" placeholder="내용" />
 				<button>Send</button>
+				<div id="photo">
+					프로필
+				</div>
 			</form>
 			<form action="" id="register">
 				<input id="r" autocomplete="off" placeholder="닉네임 설정"/>
 				<button>Send</button>
 			</form>
+			<form action="/uploaded" enctype="multipart/form-data" method="post">
+					정적 폼 전송
+				<input type="file" name="img">
+
+				<button type="submit">Upload</button>
+			</form>
+			<form id="dynamic_form">
+					동적 폼 전송
+				<input type="file" name="img">
+				<button type="button" onclick="upload_file();">Upload</button>
+			</form>
 			<div id="userCount">
 			</div>
 		</div>
 	</div>
-	<script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+	
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.form/4.3.0/jquery.form.min.js" integrity="sha384-qlmct0AOBiA2VPZkMY3+2WqkHtIQ9lSdAsAn5RUJD/3vA5MKDgSGcdmIv4ycVxyn" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>	
 	<script>
+	var clients = {};
+	var profile = {};
+	var mynickname;
+	
+	function isEmpty(obj) {
+		for (let key in obj) {
+		// if the loop has started, there is a property
+			return false;
+		}
+		return true;
+	}
+	
 	$(function () {
 		var socket = io();
-
 		$( '#chat' ).submit(function(e){
 			e.preventDefault();
-
-			//var name = $('#m').val(); 
+			
 			var content = $('#h').val();
-		  
+			var path = profile[socket.id];
+			var who = $('#socketID').val();
 			//var aJson = {"name":name, "content":content};
-			var aJson = {"content" : content};
+			var aJson = {"content" : content, "path" : path, "name" : mynickname, "who" : who};
 			var send = JSON.stringify(aJson);
-		  
-			socket.emit( 'reply', send );
+			if (aJson.who == "모두에게") {
+				socket.emit( 'reply', send );				
+			} else {
+				socket.emit( 'reply_to', send);
+			}
  
 			//$('#m').val('');
 			$('#h').val('');
 			return false;
 		});
-		
+		<!-- ajaxForm -> 특정 폼 태그를 동적 폼으로 만들어버린다! -->
+		$( "#dynamic_form" ).ajaxForm(
+			{
+				url: "/uploaded",
+				method: "post",
+				enctype: "multipart/form-data",
+				success: function ( data ){
+					profile[socket.id] = data.filename;
+					console.log( data.path );
+					var img = '<img src="' + data.filename + '" width=100px height=100px>';
+					$( "#photo" ).html( img );
+					socket.emit( 'profile' , data.filename );
+				}
+		});
+
 		socket.on('reply',function(msg){
-			$('#messages').append($('<li>').text(msg));
-			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+			if (msg.who == "모두에게") {
+				if (isEmpty(msg.path)) {
+					$('#messages').append('<li>' + ''.concat(msg.name.slice(0, 6)) + ': ' + msg.content + '</li>');
+					$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+				} else {
+					$('#messages').append('<li><image src="' + msg.path + '" width=50px height=50px>' + ''.concat(msg.name.slice(0, 6)) + ': ' + msg.content + '</li>');
+					$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+				}
+			} else {
+					if (isEmpty(msg.path)) {
+					$('#messages').append('<li><span style="color:green">(귓속말)</span>' + ''.concat(msg.name.slice(0, 6)) + ': ' + msg.content + '</li>');
+					$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+				} else {
+					$('#messages').append('<li><span style="color:green">(귓속말)</span>' + '<image src="' + msg.path + '" width=50px height=50px>' + ''.concat(msg.name.slice(0, 6)) + ': ' + msg.content + '</li>');
+					$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+				}
+			}
 		});
 		
 		$( '#register' ).submit(function(e){
@@ -98,29 +163,48 @@
 			var aJson = {"name":name};
 	  
 			var send = JSON.stringify(aJson);
+			
+			//clients[socket.id] = name;
+			
+			mynickname = name;
 	  
 			socket.emit( 'register', send );
 
 			$('#r').val('');
 			return false;
 		});
-		
 		socket.on('registered',function(change){
-			$('#messages').append('<li style="color:red">' + change.before + '님이 닉네임을 ' + change.after + '(으)로 변경하였습니다.</li>');
-			$('#socketID > option').remove('#' + change.before);
-			$('#socketID').append('<option value="' + change.after + '"' + 'id="' + change.after + '">' + change.after + '</option>');
+			$('#messages').append('<li style="color:red">' + ''.concat(change.before.slice(0, 6)) + '님이 닉네임을 ' + change.after + '(으)로 변경하였습니다.</li>');
+			//$('#socketID > option').remove('#' + change.before);
+			//$('#socketID').append('<option value="' + change.after + '"' + 'id="' + change.after + '">' + change.after + '</option>');
 			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
 		});
 		
+		socket.on('reload',function(nickname){
+			$("#socketID > option").remove();
+			$('#socketID').append('<option>모두에게</option>');
+			for (var eachNickname in nickname) {
+				console.log(eachNickname);
+				if (eachNickname != socket.id) {
+					$('#socketID').append('<option value="' + eachNickname + '">' + ''.concat(nickname[eachNickname].slice(0, 6)) + '</option>');
+				} else {
+					continue;
+				}
+			}
+			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+		});
 		socket.on('in',function(nickname){
-			$('#messages').append('<li><span style="color:blue">' + nickname + '</span>님이 들어오셨습니다.</li>');
-			$('#socketID').append('<option value="' + nickname + '"' + 'id="' + nickname + '">' + nickname + '</option>');
+			mynickname = nickname;
+			$('#messages').append('<li><span style="color:blue">' + ''.concat(nickname.slice(0, 6)) + '</span>님이 들어오셨습니다.</li>');
+			$("#socketID").append(new Option(nickname, nickname));
 			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
 		});
 		
-		socket.on('out',function(nickname){
-			$('#messages').append('<li><span style="color:blue">' + nickname + '</span>님이 나가셨습니다.</li>');
-			$('#socketID > option').remove('#' + nickname);
+		socket.on('out',function(info){
+			delete clients[socket.id];
+			$('#messages').append('<li><span style="color:blue">' + ''.concat(info.name.slice(0, 6)) + '</span>님이 나가셨습니다.</li>');
+			//$('#socketID > option').remove('#' + nickname);
+			$('#socketID option[value=' + info.id + ']').remove();
 			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
 		});		
 		
@@ -128,10 +212,18 @@
 			$('#userCount').empty();
 			$('#userCount').append("<p>현재 접속자 수 : " + count + "</p>");
 		});
+		
+		socket.on('img', function(info){
+			$('#messages').append('<li><span style="color:orange">' + info.name+ '</span>님이 프로필 사진을 등록했습니다.' + '<image src="' +  info.path + '" width=100px height=100px>' + '</li>');
+			$('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+		});
 	});
+	
+	function upload_file(){
+		$( "#dynamic_form" ).submit();
+	}
+	
 	</script>
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-Piv4xVNRyMGpqkS2by6br4gNJ7DXjqk09RmUpJ8jgGtD7zP9yug3goQfGII0yAns" crossorigin="anonymous"></script>
   </body>
 </html>
-
-문제 : 나중에 들어온 사람에게 이전 리스트가 나오지 않음!
