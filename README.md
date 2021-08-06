@@ -28,4 +28,4 @@
 
 ## 📝 More details
 
-Link : [실시간 채팅](https://www.notion.so/socket-ff60e2dd27814f69a5a61a8842c46912)
+Link : [실시간 채팅](https://berry-ragdoll-6a0.notion.site/socket-ff60e2dd27814f69a5a61a8842c46912)
